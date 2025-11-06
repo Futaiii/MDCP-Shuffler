@@ -35,35 +35,32 @@
 
     <!-- 歌曲网格 -->
     <main class="main-content">
-      <RecycleScroller
-          class="scroller songs-grid"
-          :items="filteredSongs"
-          :item-size="250"
-          key-field="id"
-          v-slot="{ item }"
-      >
+      <transition-group name="card-list" tag="div" class="songs-grid">
         <div
+            v-for="song in filteredSongs"
+            :key="song.id"
             class="song-card"
-            :style="{ backgroundColor: item.color }"
+            :style="{ backgroundColor: song.color }"
         >
           <div class="card-overlay">
-            <button @click="toggleFavorite(item.id)" class="favorite-btn" :class="{ active: item.isFavorite }">
-              {{ item.isFavorite ? '⭐' : '☆' }}
+            <button @click="toggleFavorite(song.id)" class="favorite-btn" :class="{ active: song.isFavorite }">
+              {{ song.isFavorite ? '⭐' : '☆' }}
             </button>
             <div class="card-content">
-              <h3 class="song-title">{{ item.title }}</h3>
-              <p class="song-artist">{{ item.artist }}</p>
+              <h3 class="song-title">{{ song.title }}</h3>
+              <p class="song-artist">{{ song.artist }}</p>
               <div class="song-meta">
-                <span class="level-badge">Lv.{{ item.level || 'N/A' }}</span>
+                <span class="level-badge">Lv.{{ song.level || 'N/A' }}</span>
               </div>
             </div>
             <div class="card-actions">
-              <button @click="editSong(item)" class="btn-icon" title="编辑">✏️</button>
-              <button @click="deleteSong(item)" class="btn-icon" title="删除">🗑️</button>
+              <button @click="editSong(song)" class="btn-icon" title="编辑">✏️</button>
+              <!-- [修改] 点击事件现在传递整个 song 对象 -->
+              <button @click="deleteSong(song)" class="btn-icon" title="删除">🗑️</button>
             </div>
           </div>
         </div>
-      </RecycleScroller>
+      </transition-group>
 
       <div v-if="filteredSongs.length === 0" class="empty-state">
         <div class="empty-icon">🎵</div>
@@ -192,8 +189,6 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { RecycleScroller } from 'vue-virtual-scroller'
-
 import { GetAllSongs, AddSong, UpdateSong, DeleteSong as BackendDeleteSong, ToggleFavorite, RandomPick } from '../wailsjs/go/main/App'
 
 const songs = ref([])
