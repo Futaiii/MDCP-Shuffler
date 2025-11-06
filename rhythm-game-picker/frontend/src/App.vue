@@ -20,14 +20,14 @@
     <div class="filter-bar">
       <div class="filter-group">
         <label>排序:</label>
-        <select v-model="sortType" @change="loadSongs" class="select">
+        <select v-model="sortType" class="select">
           <option value="title">A-Z</option>
           <option value="level">难度等级</option>
         </select>
       </div>
       <div class="filter-group">
         <label>
-          <input type="checkbox" v-model="showFavoritesOnly" @change="loadSongs">
+          <input type="checkbox" v-model="showFavoritesOnly">
           只显示收藏
         </label>
       </div>
@@ -36,8 +36,9 @@
     <!-- 歌曲网格 -->
     <main class="main-content">
       <transition-group name="card-list" tag="div" class="songs-grid">
+        <!-- [修改] v-for 循环现在遍历 visibleSongs 而不是 filteredSongs -->
         <div
-            v-for="song in filteredSongs"
+            v-for="song in visibleSongs"
             :key="song.id"
             class="song-card"
             :style="{ backgroundColor: song.color }"
@@ -55,14 +56,16 @@
             </div>
             <div class="card-actions">
               <button @click="editSong(song)" class="btn-icon" title="编辑">✏️</button>
-              <!-- [修改] 点击事件现在传递整个 song 对象 -->
               <button @click="deleteSong(song)" class="btn-icon" title="删除">🗑️</button>
             </div>
           </div>
         </div>
       </transition-group>
 
-      <div v-if="filteredSongs.length === 0" class="empty-state">
+      <!-- [新增] 用于触发加载更多的哨兵元素 -->
+      <div ref="loadMoreTrigger" v-if="hasMoreSongs" class="load-more-trigger"></div>
+
+      <div v-if="visibleSongs.length === 0 && !loading" class="empty-state">
         <div class="empty-icon">🎵</div>
         <p>暂无歌曲，点击"添加歌曲"开始吧！</p>
       </div>
@@ -170,7 +173,7 @@
       </div>
     </transition>
 
-    <!-- [新增] 删除确认模态框 -->
+    <!-- 删除确认模态框 (无变化) -->
     <transition name="modal">
       <div v-if="showDeleteConfirmModal" class="modal-overlay" @click.self="closeDeleteConfirmModal">
         <div class="modal-content">
@@ -183,15 +186,22 @@
         </div>
       </div>
     </transition>
-
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { GetAllSongs, AddSong, UpdateSong, DeleteSong as BackendDeleteSong, ToggleFavorite, RandomPick } from '../wailsjs/go/main/App'
 
-const songs = ref([])
+// --- [新增] 懒加载相关状态 ---
+const allSongs = ref([]) // 存储从后端获取的所有歌曲
+const visibleSongs = ref([]) // 实际渲染在页面上的歌曲
+const loadMoreTrigger = ref(null) // 哨兵元素的引用
+const loading = ref(true); // 初始加载状态
+const PAGE_SIZE = 20; // 每次加载的数量
+let observer = null; // IntersectionObserver 实例
+
+// --- 原有状态 (部分重命名或调整) ---
 const sortType = ref('title')
 const showFavoritesOnly = ref(false)
 const showAddModal = ref(false)
@@ -199,12 +209,9 @@ const showRandomModal = ref(false)
 const showResultModal = ref(false)
 const editingItem = ref(null)
 const randomResults = ref([])
-
-// [新增] 删除确认模态框的状态
 const showDeleteConfirmModal = ref(false)
 const songToDeleteId = ref(null)
 const songToDeleteTitle = ref('')
-
 
 const macaronColors = [
   '#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF',
@@ -215,7 +222,7 @@ const macaronColors = [
 const formData = ref({
   title: '',
   artist: '',
-  level: 10,
+  level: 1,
   color: macaronColors[0],
   isFavorite: false
 })
@@ -227,8 +234,9 @@ const randomOptions = ref({
   onlyFavorites: false
 })
 
+// [修改] filteredSongs 现在只负责计算，不直接用于渲染
 const filteredSongs = computed(() => {
-  let result = [...songs.value]
+  let result = [...allSongs.value]
 
   if (showFavoritesOnly.value) {
     result = result.filter(s => s.isFavorite)
@@ -237,24 +245,87 @@ const filteredSongs = computed(() => {
   if (sortType.value === 'title') {
     result.sort((a, b) => a.title.localeCompare(b.title))
   } else if (sortType.value === 'level') {
-    result.sort((a, b) => b.level - a.level)
+    result.sort((a, b) => (b.level || 0) - (a.level || 0))
   }
 
   return result
 })
 
-onMounted(() => {
-  loadSongs()
+// [新增] 计算是否还有更多歌曲可加载
+const hasMoreSongs = computed(() => {
+  return visibleSongs.value.length < filteredSongs.value.length
 })
 
-async function loadSongs() {
-  try {
-    songs.value = await GetAllSongs()
-    console.log(songs.value)
-  } catch (err) {
-    console.error('加载歌曲失败:', err)
+// [新增] 监听筛选条件的变化，当条件变化时，重置懒加载
+watch([filteredSongs], () => {
+  resetAndLoadVisibleSongs()
+})
+
+// [新增] 加载下一页的歌曲
+function loadNextPage() {
+  if (!hasMoreSongs.value) return;
+
+  const currentPage = Math.ceil(visibleSongs.value.length / PAGE_SIZE);
+  const start = currentPage * PAGE_SIZE;
+  const end = start + PAGE_SIZE;
+  const newSongs = filteredSongs.value.slice(start, end);
+
+  visibleSongs.value.push(...newSongs);
+}
+
+// [新增] 重置并加载第一页歌曲
+function resetAndLoadVisibleSongs() {
+  visibleSongs.value = filteredSongs.value.slice(0, PAGE_SIZE);
+}
+
+// [新增] 设置 IntersectionObserver
+function setupObserver() {
+  observer = new IntersectionObserver(
+      (entries) => {
+        // 当哨兵元素进入视口时，加载下一页
+        if (entries[0].isIntersecting) {
+          loadNextPage();
+        }
+      },
+      {
+        root: null, // 使用浏览器视口作为根
+        rootMargin: '0px',
+        threshold: 0.1 // 元素出现 10% 时触发
+      }
+  );
+
+  if (loadMoreTrigger.value) {
+    observer.observe(loadMoreTrigger.value);
   }
 }
+
+// [修改] onMounted: 初始化加载和观察器
+onMounted(async () => {
+  await loadSongs()
+  setupObserver()
+})
+
+// [新增] onUnmounted: 组件销毁时清理观察器，防止内存泄漏
+onUnmounted(() => {
+  if (observer) {
+    observer.disconnect();
+  }
+})
+
+// [修改] loadSongs 现在更新 allSongs 并触发懒加载的重置
+async function loadSongs() {
+  loading.value = true;
+  try {
+    allSongs.value = await GetAllSongs() || []
+    resetAndLoadVisibleSongs() // 重置并加载第一页
+  } catch (err) {
+    console.error('加载歌曲失败:', err)
+  } finally {
+    loading.value = false;
+  }
+}
+
+// --- 以下是原有的方法，大部分无变化，除了 loadSongs() 的调用 ---
 
 function openAddModal() {
   resetForm()
@@ -263,7 +334,6 @@ function openAddModal() {
 
 function editSong(song) {
   editingItem.value = { ...song }
-
   formData.value = {
     id: song.id,
     title: song.title,
@@ -272,41 +342,35 @@ function editSong(song) {
     color: song.color || macaronColors[0],
     isFavorite: song.isFavorite,
   }
-
   showAddModal.value = true
 }
 
 async function saveSong() {
   const songToSave = { ...formData.value }
-
   try {
     if (editingItem.value) {
       await UpdateSong(songToSave)
     } else {
       await AddSong(songToSave)
     }
-    await loadSongs()
+    await loadSongs() // 保存后重新加载所有歌曲
     closeAddModal()
   } catch (err) {
     console.error('保存失败:', err)
   }
 }
 
-// [修改] deleteSong 函数现在只打开模态框
 function deleteSong(song) {
   songToDeleteId.value = song.id;
   songToDeleteTitle.value = song.title;
   showDeleteConfirmModal.value = true;
 }
 
-// [新增] 确认删除的逻辑
 async function confirmDelete() {
   if (songToDeleteId.value === null) return;
   try {
-    // 使用别名 BackendDeleteSong 以避免与本地函数名冲突
     await BackendDeleteSong(songToDeleteId.value)
-
-    await loadSongs()
+    await loadSongs() // 删除后重新加载所有歌曲
   } catch (err) {
     console.error('删除失败:', err)
   } finally {
@@ -314,20 +378,25 @@ async function confirmDelete() {
   }
 }
 
-// [新增] 关闭删除模态框的函数
 function closeDeleteConfirmModal() {
   showDeleteConfirmModal.value = false;
   songToDeleteId.value = null;
   songToDeleteTitle.value = '';
 }
 
-
 async function toggleFavorite(id) {
   try {
+    // 优化：直接在前端更新状态，避免重新加载全部数据
+    const song = allSongs.value.find(s => s.id === id);
+    if (song) {
+      song.isFavorite = !song.isFavorite;
+    }
+    // 向后端同步状态
     await ToggleFavorite(id)
-    await loadSongs()
   } catch (err) {
     console.error('操作失败:', err)
+    // 如果失败，可以考虑重新加载以回滚状态
+    await loadSongs();
   }
 }
 
@@ -902,4 +971,15 @@ function changeRandomCount(delta) {
   background-color: #c0392b;
 }
 
+.result-modal .btn-full {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.load-more-trigger {
+  height: 50px; /* 给一个高度，确保可以被观察到 */
+  width: 100%;
+}
 </style>
