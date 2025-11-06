@@ -902,43 +902,4 @@ function changeRandomCount(delta) {
   background-color: #c0392b;
 }
 
-.scroller {
-  /*
-    这是最关键的一步！
-    虚拟滚动容器必须有一个明确的高度。
-    这里我们让它填满 main-content 的剩余空间。
-    你需要根据你的布局来调整这个值。
-  */
-  height: 100%;
-  overflow-y: auto;
-}
-
-/*
-  为了让 .scroller 的 height: 100% 生效，
-  它的父容器 .main-content 也需要有明确的高度。
-  我们可以使用 flex 布局来实现。
-*/
-.app-container {
-  display: flex;
-  flex-direction: column;
-  height: 100vh; /* 让整个应用占满视口高度 */
-}
-
-.main-content {
-  flex-grow: 1; /* 让主内容区填满剩余空间 */
-  overflow: hidden; /* 防止内部滚动条影响布局 */
-  position: relative; /* 为 empty-state 定位 */
-}
-
-/*
-  vue-virtual-scroller 会生成一些自己的内部元素，
-  我们需要确保 songs-grid 的样式能正确应用。
-  把 grid 样式应用到 .scroller 本身通常是最简单的。
-*/
-.songs-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px;
-  padding: 20px;
-}
 </style>
