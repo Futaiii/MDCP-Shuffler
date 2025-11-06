@@ -16,27 +16,35 @@
       </div>
     </header>
 
-    <!-- 筛选栏 (无变化) -->
+    <!-- 筛选栏 [重大修改] -->
     <div class="filter-bar">
+      <!-- [新增] 按歌名搜索 -->
+      <div class="filter-group search-group">
+        <span class="search-icon">🔍</span>
+        <input type="text" v-model="searchTerm" placeholder="按歌名搜索..." class="search-input">
+      </div>
+      <!-- [修改] 排序选项 -->
       <div class="filter-group">
         <label>排序:</label>
         <select v-model="sortType" class="select">
-          <option value="title">A-Z</option>
-          <option value="level">难度等级</option>
+          <option value="title_asc">歌名 A-Z</option>
+          <option value="title_desc">歌名 Z-A</option>
+          <option value="level_desc">难度 逆序</option>
+          <option value="level_asc">难度 正序</option>
         </select>
       </div>
+      <!-- [无变化] 只显示收藏 -->
       <div class="filter-group">
-        <label>
+        <label class="checkbox-label">
           <input type="checkbox" v-model="showFavoritesOnly">
           只显示收藏
         </label>
       </div>
     </div>
 
-    <!-- 歌曲网格 -->
+    <!-- 歌曲网格 (无显式变化，但其数据源已更新) -->
     <main class="main-content">
       <transition-group name="card-list" tag="div" class="songs-grid">
-        <!-- [修改] v-for 循环现在遍历 visibleSongs 而不是 filteredSongs -->
         <div
             v-for="song in visibleSongs"
             :key="song.id"
@@ -62,15 +70,17 @@
         </div>
       </transition-group>
 
-      <!-- [新增] 用于触发加载更多的哨兵元素 -->
-      <div ref="loadMoreTrigger" v-if="hasMoreSongs" class="load-more-trigger"></div>
+      <!-- [重大修改] 使用 v-show 替换 v-if 来保持哨兵元素的持久性 -->
+      <div ref="loadMoreTrigger" v-show="hasMoreSongs" class="load-more-trigger"></div>
 
       <div v-if="visibleSongs.length === 0 && !loading" class="empty-state">
         <div class="empty-icon">🎵</div>
-        <p>暂无歌曲，点击"添加歌曲"开始吧！</p>
+        <p>没有找到匹配的歌曲哦！</p>
       </div>
     </main>
 
+    <!-- 其他模态框部分无变化... -->
+    <!-- ... 省略未修改的模态框代码 ... -->
     <!-- 添加/编辑歌曲模态框 (无变化) -->
     <transition name="modal">
       <div v-if="showAddModal" class="modal-overlay" @click.self="closeAddModal">
@@ -178,7 +188,7 @@
       <div v-if="showDeleteConfirmModal" class="modal-overlay" @click.self="closeDeleteConfirmModal">
         <div class="modal-content">
           <h2>确认删除</h2>
-          <p>您确定要删除歌曲 "{{ songToDeleteTitle }}" 吗？此操作无法撤销。</p>
+          <p style="color: #555555">您确定要删除歌曲 "{{ songToDeleteTitle }}" 吗？此操作无法撤销。</p>
           <div class="form-actions">
             <button type="button" @click="closeDeleteConfirmModal" class="btn btn-secondary">取消</button>
             <button type="button" @click="confirmDelete" class="btn btn-danger">确认删除</button>
@@ -190,19 +200,18 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue' // nextTick 不再需要
 import { GetAllSongs, AddSong, UpdateSong, DeleteSong as BackendDeleteSong, ToggleFavorite, RandomPick } from '../wailsjs/go/main/App'
 
-// --- [新增] 懒加载相关状态 ---
-const allSongs = ref([]) // 存储从后端获取的所有歌曲
-const visibleSongs = ref([]) // 实际渲染在页面上的歌曲
-const loadMoreTrigger = ref(null) // 哨兵元素的引用
-const loading = ref(true); // 初始加载状态
-const PAGE_SIZE = 20; // 每次加载的数量
-let observer = null; // IntersectionObserver 实例
-
-// --- 原有状态 (部分重命名或调整) ---
-const sortType = ref('title')
+// --- 状态定义部分（无变化） ---
+const searchTerm = ref('');
+const allSongs = ref([])
+const visibleSongs = ref([])
+const loadMoreTrigger = ref(null)
+const loading = ref(true);
+const PAGE_SIZE = 20;
+let observer = null;
+const sortType = ref('title_asc')
 const showFavoritesOnly = ref(false)
 const showAddModal = ref(false)
 const showRandomModal = ref(false)
@@ -212,112 +221,97 @@ const randomResults = ref([])
 const showDeleteConfirmModal = ref(false)
 const songToDeleteId = ref(null)
 const songToDeleteTitle = ref('')
-
 const macaronColors = [
   '#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF',
   '#E0BBE4', '#FFB7D5', '#C7CEEA', '#B4E7F5', '#FED9B7',
   '#A0E7E5', '#F7C6C7', '#C9E4DE', '#FFD1DC', '#E4C1F9',
 ];
-
 const formData = ref({
-  title: '',
-  artist: '',
-  level: 1,
-  color: macaronColors[0],
-  isFavorite: false
+  title: '', artist: '', level: 1, color: macaronColors[0], isFavorite: false
 })
-
 const randomOptions = ref({
-  count: 1,
-  minLevel: 0,
-  maxLevel: 0,
-  onlyFavorites: false
+  count: 1, minLevel: 0, maxLevel: 0, onlyFavorites: false
 })
 
-// [修改] filteredSongs 现在只负责计算，不直接用于渲染
+// --- 计算属性部分（无变化） ---
 const filteredSongs = computed(() => {
   let result = [...allSongs.value]
-
+  if (searchTerm.value.trim() !== '') {
+    const lowerCaseSearch = searchTerm.value.toLowerCase();
+    result = result.filter(s => s.title.toLowerCase().includes(lowerCaseSearch));
+  }
   if (showFavoritesOnly.value) {
     result = result.filter(s => s.isFavorite)
   }
-
-  if (sortType.value === 'title') {
-    result.sort((a, b) => a.title.localeCompare(b.title))
-  } else if (sortType.value === 'level') {
-    result.sort((a, b) => (b.level || 0) - (a.level || 0))
+  switch (sortType.value) {
+    case 'title_asc': result.sort((a, b) => a.title.localeCompare(b.title)); break;
+    case 'title_desc': result.sort((a, b) => b.title.localeCompare(a.title)); break;
+    case 'level_desc': result.sort((a, b) => (b.level || 0) - (a.level || 0)); break;
+    case 'level_asc': result.sort((a, b) => (a.level || 0) - (b.level || 0)); break;
   }
-
   return result
 })
-
-// [新增] 计算是否还有更多歌曲可加载
 const hasMoreSongs = computed(() => {
   return visibleSongs.value.length < filteredSongs.value.length
 })
 
-// [新增] 监听筛选条件的变化，当条件变化时，重置懒加载
+// --- 监听和方法部分（有修改） ---
+
 watch([filteredSongs], () => {
   resetAndLoadVisibleSongs()
 })
 
-// [新增] 加载下一页的歌曲
 function loadNextPage() {
   if (!hasMoreSongs.value) return;
-
   const currentPage = Math.ceil(visibleSongs.value.length / PAGE_SIZE);
   const start = currentPage * PAGE_SIZE;
   const end = start + PAGE_SIZE;
   const newSongs = filteredSongs.value.slice(start, end);
-
   visibleSongs.value.push(...newSongs);
 }
 
-// [新增] 重置并加载第一页歌曲
 function resetAndLoadVisibleSongs() {
   visibleSongs.value = filteredSongs.value.slice(0, PAGE_SIZE);
 }
 
-// [新增] 设置 IntersectionObserver
+
+// [修改] 恢复简单的 setupObserver 函数
 function setupObserver() {
   observer = new IntersectionObserver(
       (entries) => {
-        // 当哨兵元素进入视口时，加载下一页
         if (entries[0].isIntersecting) {
           loadNextPage();
         }
       },
-      {
-        root: null, // 使用浏览器视口作为根
-        rootMargin: '0px',
-        threshold: 0.1 // 元素出现 10% 时触发
-      }
+      { root: null, rootMargin: '0px', threshold: 0.1 }
   );
 
+  // 因为哨兵元素现在一直存在于DOM中，我们可以在这里直接观察它
   if (loadMoreTrigger.value) {
     observer.observe(loadMoreTrigger.value);
   }
 }
 
-// [修改] onMounted: 初始化加载和观察器
+// [修改] onMounted: 调用简化的 setupObserver
 onMounted(async () => {
   await loadSongs()
-  setupObserver()
+  setupObserver() // 只需在挂载时设置一次观察者即可
 })
 
-// [新增] onUnmounted: 组件销毁时清理观察器，防止内存泄漏
+// [删除] 不再需要 `watch(loadMoreTrigger, ...)` 这个复杂的监听器
+
 onUnmounted(() => {
   if (observer) {
     observer.disconnect();
   }
 })
 
-// [修改] loadSongs 现在更新 allSongs 并触发懒加载的重置
+// --- 其余方法保持不变 ---
 async function loadSongs() {
   loading.value = true;
   try {
     allSongs.value = await GetAllSongs() || []
-    resetAndLoadVisibleSongs() // 重置并加载第一页
+    resetAndLoadVisibleSongs()
   } catch (err) {
     console.error('加载歌曲失败:', err)
   } finally {
@@ -325,113 +319,78 @@ async function loadSongs() {
   }
 }
 
-// --- 以下是原有的方法，大部分无变化，除了 loadSongs() 的调用 ---
-
-function openAddModal() {
-  resetForm()
-  showAddModal.value = true
-}
-
+function openAddModal() { resetForm(); showAddModal.value = true; }
 function editSong(song) {
-  editingItem.value = { ...song }
+  editingItem.value = { ...song };
   formData.value = {
-    id: song.id,
-    title: song.title,
-    artist: song.artist,
-    level: song.level || 1,
-    color: song.color || macaronColors[0],
+    id: song.id, title: song.title, artist: song.artist,
+    level: song.level || 1, color: song.color || macaronColors[0],
     isFavorite: song.isFavorite,
-  }
-  showAddModal.value = true
+  };
+  showAddModal.value = true;
 }
-
 async function saveSong() {
-  const songToSave = { ...formData.value }
+  const songToSave = { ...formData.value };
   try {
     if (editingItem.value) {
-      await UpdateSong(songToSave)
+      await UpdateSong(songToSave);
     } else {
-      await AddSong(songToSave)
+      await AddSong(songToSave);
     }
-    await loadSongs() // 保存后重新加载所有歌曲
-    closeAddModal()
-  } catch (err) {
-    console.error('保存失败:', err)
-  }
+    await loadSongs();
+    closeAddModal();
+  } catch (err) { console.error('保存失败:', err); }
 }
-
 function deleteSong(song) {
   songToDeleteId.value = song.id;
   songToDeleteTitle.value = song.title;
   showDeleteConfirmModal.value = true;
 }
-
 async function confirmDelete() {
   if (songToDeleteId.value === null) return;
   try {
-    await BackendDeleteSong(songToDeleteId.value)
-    await loadSongs() // 删除后重新加载所有歌曲
+    await BackendDeleteSong(songToDeleteId.value);
+    await loadSongs();
   } catch (err) {
-    console.error('删除失败:', err)
+    console.error('删除失败:', err);
   } finally {
     closeDeleteConfirmModal();
   }
 }
-
 function closeDeleteConfirmModal() {
   showDeleteConfirmModal.value = false;
   songToDeleteId.value = null;
   songToDeleteTitle.value = '';
 }
-
 async function toggleFavorite(id) {
   try {
-    // 优化：直接在前端更新状态，避免重新加载全部数据
     const song = allSongs.value.find(s => s.id === id);
-    if (song) {
-      song.isFavorite = !song.isFavorite;
-    }
-    // 向后端同步状态
-    await ToggleFavorite(id)
-  } catch (err) {
-    console.error('操作失败:', err)
-    // 如果失败，可以考虑重新加载以回滚状态
-    await loadSongs();
-  }
+    if (song) { song.isFavorite = !song.isFavorite; }
+    await ToggleFavorite(id);
+  } catch (err) { console.error('操作失败:', err); await loadSongs(); }
 }
-
 async function performRandomPick() {
   try {
-    randomResults.value = await RandomPick(randomOptions.value)
-    showRandomModal.value = false
-    showResultModal.value = true
-  } catch (err)
-  {
-    console.error('抽取失败:', err)
-  }
+    randomResults.value = await RandomPick(randomOptions.value);
+    showRandomModal.value = false;
+    showResultModal.value = true;
+  } catch (err) { console.error('抽取失败:', err); }
 }
-
 function closeAddModal() {
-  showAddModal.value = false
-  editingItem.value = null
-  resetForm()
+  showAddModal.value = false;
+  editingItem.value = null;
+  resetForm();
 }
-
 function resetForm() {
   formData.value = {
-    title: '',
-    artist: '',
-    level: 1,
-    color: macaronColors[0],
-    isFavorite: false
-  }
+    title: '', artist: '', level: 1,
+    color: macaronColors[0], isFavorite: false
+  };
 }
-
 function openRandomModal() {
-  randomOptions.value.onlyFavorites = showFavoritesOnly.value
-  showRandomModal.value = true
+  randomOptions.value.onlyFavorites = showFavoritesOnly.value;
+  showRandomModal.value = true;
 }
-
 function changeRandomCount(delta) {
   const current = randomOptions.value.count;
   const newValue = current + delta;
@@ -440,14 +399,17 @@ function changeRandomCount(delta) {
   }
 }
 </script>
-
 <style scoped>
+/* --- [修改] 更换了新的背景色 --- */
 .app-container {
   width: 100%;
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #f0f0f0;
+  /* 一个深邃、有质感的暗色背景 */
+  background-color: #090615;
+  background-image: linear-gradient(315deg, #080717 0%, #1f1a3d 74%, #161626 100%);
 }
 
 .header {
@@ -455,9 +417,9 @@ function changeRandomCount(delta) {
   justify-content: space-between;
   align-items: center;
   padding: 20px 30px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05); /* 降低透明度以适应深色背景 */
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1); /* 边框调暗 */
 }
 
 .title {
@@ -467,6 +429,41 @@ function changeRandomCount(delta) {
   align-items: center;
   gap: 10px;
   margin: 0;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.3); /* 增加标题的发光感 */
+}
+
+/* --- [新增] 搜索框样式 --- */
+.search-group {
+  position: relative;
+  flex-grow: 1; /* 让搜索框占据更多空间 */
+  max-width: 400px;
+}
+.search-icon {
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(255, 255, 255, 0.6);
+  pointer-events: none; /* 让图标不影响点击输入框 */
+}
+.search-input {
+  width: 100%;
+  padding: 8px 12px 8px 40px; /* 左边留出图标位置 */
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+.search-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+.search-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 15px rgba(76, 175, 80, 0.2);
 }
 
 .icon {
@@ -485,9 +482,9 @@ function changeRandomCount(delta) {
 }
 
 .btn {
-  padding: 10px 20px;
+  padding: 15px 20px;
   border: none;
-  border-radius: 8px;
+  border-radius: 20px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -503,13 +500,13 @@ function changeRandomCount(delta) {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: linear-gradient(45deg, #4facfe 0%, #00f2fe 100%);
   color: white;
 }
 
 .btn-success {
-  background: linear-gradient(135deg, #f093fb, #f5576c);
-  color: white;
+  background: linear-gradient(45deg, #fa709a 0%, #fee140 100%);
+  color: #333;
 }
 
 .btn-secondary {
@@ -521,8 +518,8 @@ function changeRandomCount(delta) {
   display: flex;
   gap: 20px;
   padding: 15px 30px;
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
   flex-wrap: wrap;
   align-items: center;
 }
@@ -536,23 +533,29 @@ function changeRandomCount(delta) {
 
 .select {
   padding: 8px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.1);
   color: white;
   cursor: pointer;
 }
 
-.checkbox-group {
-  display: flex;
-  gap: 15px;
+.select option {
+  background-color: #2c3e50; /* 下拉选项背景色 */
+  color: white;
 }
 
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
   cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+}
+.checkbox-label:hover {
+  background-color: rgba(255,255,255,0.1);
 }
 
 .main-content {
@@ -564,7 +567,7 @@ function changeRandomCount(delta) {
 .songs-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px;
+  gap: 25px; /* 增加卡片间距 */
 }
 
 .song-card {
@@ -579,41 +582,47 @@ function changeRandomCount(delta) {
 }
 
 .song-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+  transform: translateY(-8px) scale(1.03); /* 悬浮效果更明显 */
+  box-shadow: 3px 8px 30px rgb(161, 167, 197);
 }
 
 .card-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.7));
-  padding: 15px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.1) 60%, rgba(0, 0, 0, 0) 100%);
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-end; /* 内容置底，更美观 */
 }
 
 .favorite-btn {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
+  top: 15px; /* 调整位置 */
+  right: 15px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
   width: 40px;
   height: 40px;
-  font-size: 24px;
+  font-size: 20px; /* 调整图标大小 */
+  color: white;
   cursor: pointer;
   transition: all 0.3s;
   backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .favorite-btn:hover {
   transform: scale(1.2);
+  background-color: rgba(0, 0, 0, 0.6);
 }
 
 .favorite-btn.active {
   background: rgba(255, 215, 0, 0.8);
+  color: white;
   animation: pulse 0.5s;
 }
 
@@ -623,82 +632,79 @@ function changeRandomCount(delta) {
 }
 
 .card-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
   color: white;
 }
 
 .song-title {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: bold;
   margin: 0 0 5px 0;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.8);
 }
 
 .song-artist {
   font-size: 14px;
-  opacity: 0.9;
-  margin: 0 0 10px 0;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  opacity: 0.8;
+  margin: 0 0 15px 0;
+  text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.7);
 }
 
 .song-meta {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  align-items: center; /* 确保操作按钮和等级徽章对齐 */
+  justify-content: space-between; /* 将等级和操作按钮分开 */
 }
 
-.difficulty-badge, .level-badge {
-  padding: 4px 10px;
-  border-radius: 12px;
+.level-badge {
+  padding: 5px 12px;
+  border-radius: 15px;
   font-size: 12px;
   font-weight: bold;
   backdrop-filter: blur(5px);
-}
-
-.difficulty-badge {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.diff-easy { background: rgba(102, 187, 106, 0.8); }
-.diff-normal { background: rgba(66, 165, 245, 0.8); }
-.diff-hard { background: rgba(255, 167, 38, 0.8); }
-.diff-expert { background: rgba(239, 83, 80, 0.8); }
-.diff-master { background: rgba(156, 39, 176, 0.8); }
-
-.level-badge {
   background: rgba(0, 0, 0, 0.5);
   color: white;
+  border: 1px solid rgba(255,255,255,0.2);
 }
 
 .card-actions {
   display: flex;
-  gap: 10px;
   justify-content: flex-end;
+  gap: 10px;
+  opacity: 0; /* 默认隐藏 */
+  transform: translateY(10px); /* 默认下移 */
+  transition: opacity 0.3s, transform 0.3s;
 }
 
+.song-card:hover .card-actions {
+  opacity: 1; /* 悬浮时显示 */
+  transform: translateY(0);
+}
+
+
 .btn-icon {
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
-  border-radius: 8px;
-  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
   font-size: 16px;
   cursor: pointer;
   transition: all 0.3s;
   backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-icon:hover {
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.3);
   transform: scale(1.1);
 }
 
 .empty-state {
   text-align: center;
   padding: 60px 20px;
-  color: white;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .empty-icon {
@@ -712,6 +718,7 @@ function changeRandomCount(delta) {
   50% { transform: translateY(-20px); }
 }
 
+/* ... 省略未修改的模态框和其它样式 ... */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -766,12 +773,7 @@ function changeRandomCount(delta) {
 
 .input:focus, .select:focus {
   outline: none;
-  border-color: #667eea;
-}
-
-.input-color {
-  height: 50px;
-  cursor: pointer;
+  border-color: #4facfe;
 }
 
 .range-group {
@@ -880,40 +882,6 @@ function changeRandomCount(delta) {
   transform: scale(0.9);
 }
 
-
-/* 新增或修改的样式 */
-.difficulty-level-group {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 10px;
-}
-.difficulty-level-group .select {
-  flex: 2;
-  background-color: white; /* 确保在模态框中可见 */
-  color: #333;
-}
-.difficulty-level-group .input {
-  flex: 1;
-}
-.btn-icon-small {
-  background: none;
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 5px;
-}
-.btn-link {
-  background: none;
-  border: none;
-  color: #667eea;
-  cursor: pointer;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
 .color-picker {
   display: flex;
   flex-wrap: wrap;
@@ -931,8 +899,8 @@ function changeRandomCount(delta) {
   transform: scale(1.1);
 }
 .color-swatch.selected {
-  border-color: #667eea;
-  box-shadow: 0 0 0 2px white, 0 0 0 4px #667eea;
+  border-color: #4facfe;
+  box-shadow: 0 0 0 2px white, 0 0 0 4px #4facfe;
 }
 
 .stepper-input {
@@ -979,7 +947,7 @@ function changeRandomCount(delta) {
 }
 
 .load-more-trigger {
-  height: 50px; /* 给一个高度，确保可以被观察到 */
+  height: 50px;
   width: 100%;
 }
 </style>
