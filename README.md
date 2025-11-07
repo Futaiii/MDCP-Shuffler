@@ -13,17 +13,13 @@
 
 **此为正常现象，请手动放行或者暂时关闭杀毒软件。软件是开源的，你可以随意浏览源码或者询问AI，本人确保没有任何病毒或者木马代码。**
 
-如果无法下载，请复制命令到终端中执行，将保存到C盘`下载`目录下，软件名称为：`rhythm-game-picker-0.0.4-windows-amd64.exe`：
-> Powershell命令
-```Powershell
-Invoke-WebRequest -Uri "https://github.com/Futaiii/MDCP-Shuffler/releases/download/v0.0.4/rhythm-game-picker-0.0.4-windows-amd64.exe" -OutFile (Join-Path -Path ([System.Environment]::GetFolderPath('Downloads')) -ChildPath "rhythm-game-picker-0.0.4-windows-amd64.exe")
-```
+如果无法下载，请`Win+R`输入`cmd`打开终端，复制下载命令到终端中执行，软件将保存到C盘`下载`目录下，软件名称为：`rhythm-game-picker-0.0.4-windows-amd64.exe`：
 > cmd命令
 ```Cmd
 curl -L -o "%USERPROFILE%\Downloads\rhythm-game-picker-0.0.4-windows-amd64.exe" "https://github.com/Futaiii/MDCP-Shuffler/releases/download/v0.0.4/rhythm-game-picker-0.0.4-windows-amd64.exe"
 ```
 
-**Windows用户请以管理员身份运行**
+**Windows用户请以管理员身份运行。**
 
 ## ✨ 主要功能
 
