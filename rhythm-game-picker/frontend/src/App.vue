@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <!-- 顶部工具栏 (无变化) -->
+    <!-- 顶部工具栏 -->
     <header class="header">
       <h1 class="title">
         <span class="icon">🎵</span>
@@ -16,14 +16,12 @@
       </div>
     </header>
 
-    <!-- 筛选栏 [重大修改] -->
+    <!-- 筛选栏 -->
     <div class="filter-bar">
-      <!-- [新增] 按歌名搜索 -->
       <div class="filter-group search-group">
         <span class="search-icon">🔍</span>
-        <input type="text" v-model="searchTerm" placeholder="按歌名搜索..." class="search-input">
+        <input type="text" v-model="searchTerm" placeholder="按歌名或曲包搜索..." class="search-input">
       </div>
-      <!-- [修改] 排序选项 -->
       <div class="filter-group">
         <label>排序:</label>
         <select v-model="sortType" class="select">
@@ -33,7 +31,6 @@
           <option value="level_asc">难度 正序</option>
         </select>
       </div>
-      <!-- [无变化] 只显示收藏 -->
       <div class="filter-group">
         <label class="checkbox-label">
           <input type="checkbox" v-model="showFavoritesOnly">
@@ -42,7 +39,7 @@
       </div>
     </div>
 
-    <!-- 歌曲网格 (无显式变化，但其数据源已更新) -->
+    <!-- 歌曲网格 -->
     <main class="main-content">
       <transition-group name="card-list" tag="div" class="songs-grid">
         <div
@@ -70,7 +67,6 @@
         </div>
       </transition-group>
 
-      <!-- [重大修改] 使用 v-show 替换 v-if 来保持哨兵元素的持久性 -->
       <div ref="loadMoreTrigger" v-show="hasMoreSongs" class="load-more-trigger"></div>
 
       <div v-if="visibleSongs.length === 0 && !loading" class="empty-state">
@@ -79,9 +75,7 @@
       </div>
     </main>
 
-    <!-- 其他模态框部分无变化... -->
-    <!-- ... 省略未修改的模态框代码 ... -->
-    <!-- 添加/编辑歌曲模态框 (无变化) -->
+    <!-- 添加/编辑歌曲模态框 -->
     <transition name="modal">
       <div v-if="showAddModal" class="modal-overlay" @click.self="closeAddModal">
         <div class="modal-content">
@@ -121,11 +115,14 @@
       </div>
     </transition>
 
-    <!-- 随机抽取模态框 (无变化) -->
+    <!-- 随机抽取模态框  -->
     <transition name="modal">
       <div v-if="showRandomModal" class="modal-overlay" @click.self="showRandomModal = false">
         <div class="modal-content">
           <h2>🎲 随机抽取设置</h2>
+          <div v-if="searchTerm.trim() !== ''" class="info-box">
+            将从当前 <strong>{{ filteredSongs.length }}</strong> 首搜索结果中抽取。
+          </div>
           <form @submit.prevent="performRandomPick" class="form">
             <div class="form-group">
               <label>抽取数量</label>
@@ -158,7 +155,7 @@
       </div>
     </transition>
 
-    <!-- 抽取结果模态框 (无变化) -->
+    <!-- 抽取结果模态框 -->
     <transition name="modal">
       <div v-if="showResultModal" class="modal-overlay" @click.self="showResultModal = false">
         <div class="modal-content result-modal">
@@ -178,12 +175,16 @@
               </div>
             </div>
           </div>
+          <!-- 无结果提示 -->
+          <div v-if="randomResults.length === 0" class="empty-state-small">
+            <p>在指定的条件下没有找到可抽取的歌曲哦！</p>
+          </div>
           <button @click="showResultModal = false" class="btn btn-primary btn-full">关闭</button>
         </div>
       </div>
     </transition>
 
-    <!-- 删除确认模态框 (无变化) -->
+    <!-- 删除确认模态框 -->
     <transition name="modal">
       <div v-if="showDeleteConfirmModal" class="modal-overlay" @click.self="closeDeleteConfirmModal">
         <div class="modal-content">
@@ -200,10 +201,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, onUnmounted } from 'vue' // nextTick 不再需要
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { GetAllSongs, AddSong, UpdateSong, DeleteSong as BackendDeleteSong, ToggleFavorite, RandomPick } from '../wailsjs/go/main/App'
 
-// --- 状态定义部分（无变化） ---
 const searchTerm = ref('');
 const allSongs = ref([])
 const visibleSongs = ref([])
@@ -233,12 +233,14 @@ const randomOptions = ref({
   count: 1, minLevel: 0, maxLevel: 0, onlyFavorites: false
 })
 
-// --- 计算属性部分（无变化） ---
 const filteredSongs = computed(() => {
   let result = [...allSongs.value]
   if (searchTerm.value.trim() !== '') {
     const lowerCaseSearch = searchTerm.value.toLowerCase();
-    result = result.filter(s => s.title.toLowerCase().includes(lowerCaseSearch));
+    result = result.filter(s =>
+        s.title.toLowerCase().includes(lowerCaseSearch) ||
+        (s.artist && s.artist.toLowerCase().includes(lowerCaseSearch))
+    );
   }
   if (showFavoritesOnly.value) {
     result = result.filter(s => s.isFavorite)
@@ -255,11 +257,51 @@ const hasMoreSongs = computed(() => {
   return visibleSongs.value.length < filteredSongs.value.length
 })
 
-// --- 监听和方法部分（有修改） ---
 
 watch([filteredSongs], () => {
   resetAndLoadVisibleSongs()
 })
+
+async function performRandomPick() {
+  try {
+    // 如果有搜索词，则在前端从搜索结果中抽取
+    if (searchTerm.value.trim() !== '') {
+      // 1. 从当前搜索结果中筛选符合条件的歌曲
+      let potentialPicks = [...filteredSongs.value];
+
+      if (randomOptions.value.onlyFavorites) {
+        potentialPicks = potentialPicks.filter(s => s.isFavorite);
+      }
+      if (randomOptions.value.minLevel > 0) {
+        potentialPicks = potentialPicks.filter(s => (s.level || 0) >= randomOptions.value.minLevel);
+      }
+      if (randomOptions.value.maxLevel > 0) {
+        potentialPicks = potentialPicks.filter(s => (s.level || 0) <= randomOptions.value.maxLevel);
+      }
+
+      // 2. 打乱数组（Fisher-Yates shuffle）
+      for (let i = potentialPicks.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [potentialPicks[i], potentialPicks[j]] = [potentialPicks[j], potentialPicks[i]];
+      }
+
+      // 3. 取出所需数量的结果
+      randomResults.value = potentialPicks.slice(0, randomOptions.value.count);
+
+    } else {
+      // 如果没有搜索词，则调用后端进行全局抽取（原有逻辑）
+      randomResults.value = await RandomPick(randomOptions.value);
+    }
+
+    // 显示结果
+    showRandomModal.value = false;
+    showResultModal.value = true;
+
+  } catch (err) {
+    console.error('抽取失败:', err);
+  }
+}
+
 
 function loadNextPage() {
   if (!hasMoreSongs.value) return;
@@ -274,8 +316,6 @@ function resetAndLoadVisibleSongs() {
   visibleSongs.value = filteredSongs.value.slice(0, PAGE_SIZE);
 }
 
-
-// [修改] 恢复简单的 setupObserver 函数
 function setupObserver() {
   observer = new IntersectionObserver(
       (entries) => {
@@ -285,20 +325,15 @@ function setupObserver() {
       },
       { root: null, rootMargin: '0px', threshold: 0.1 }
   );
-
-  // 因为哨兵元素现在一直存在于DOM中，我们可以在这里直接观察它
   if (loadMoreTrigger.value) {
     observer.observe(loadMoreTrigger.value);
   }
 }
 
-// [修改] onMounted: 调用简化的 setupObserver
 onMounted(async () => {
   await loadSongs()
-  setupObserver() // 只需在挂载时设置一次观察者即可
+  setupObserver()
 })
-
-// [删除] 不再需要 `watch(loadMoreTrigger, ...)` 这个复杂的监听器
 
 onUnmounted(() => {
   if (observer) {
@@ -306,7 +341,6 @@ onUnmounted(() => {
   }
 })
 
-// --- 其余方法保持不变 ---
 async function loadSongs() {
   loading.value = true;
   try {
@@ -369,13 +403,7 @@ async function toggleFavorite(id) {
     await ToggleFavorite(id);
   } catch (err) { console.error('操作失败:', err); await loadSongs(); }
 }
-async function performRandomPick() {
-  try {
-    randomResults.value = await RandomPick(randomOptions.value);
-    showRandomModal.value = false;
-    showResultModal.value = true;
-  } catch (err) { console.error('抽取失败:', err); }
-}
+
 function closeAddModal() {
   showAddModal.value = false;
   editingItem.value = null;
@@ -399,15 +427,15 @@ function changeRandomCount(delta) {
   }
 }
 </script>
+
+
 <style scoped>
-/* --- [修改] 更换了新的背景色 --- */
 .app-container {
   width: 100%;
   height: 100vh;
   display: flex;
   flex-direction: column;
   color: #f0f0f0;
-  /* 一个深邃、有质感的暗色背景 */
   background-color: #090615;
   background-image: linear-gradient(315deg, #080717 0%, #1f1a3d 74%, #161626 100%);
 }
@@ -417,9 +445,9 @@ function changeRandomCount(delta) {
   justify-content: space-between;
   align-items: center;
   padding: 20px 30px;
-  background: rgba(255, 255, 255, 0.05); /* 降低透明度以适应深色背景 */
+  background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1); /* 边框调暗 */
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .title {
@@ -429,13 +457,12 @@ function changeRandomCount(delta) {
   align-items: center;
   gap: 10px;
   margin: 0;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.3); /* 增加标题的发光感 */
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 }
 
-/* --- [新增] 搜索框样式 --- */
 .search-group {
   position: relative;
-  flex-grow: 1; /* 让搜索框占据更多空间 */
+  flex-grow: 1;
   max-width: 400px;
 }
 .search-icon {
@@ -444,11 +471,11 @@ function changeRandomCount(delta) {
   top: 50%;
   transform: translateY(-50%);
   color: rgba(255, 255, 255, 0.6);
-  pointer-events: none; /* 让图标不影响点击输入框 */
+  pointer-events: none;
 }
 .search-input {
   width: 100%;
-  padding: 8px 12px 8px 40px; /* 左边留出图标位置 */
+  padding: 8px 12px 8px 40px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.1);
@@ -541,7 +568,7 @@ function changeRandomCount(delta) {
 }
 
 .select option {
-  background-color: #2c3e50; /* 下拉选项背景色 */
+  background-color: #2c3e50;
   color: white;
 }
 
@@ -582,7 +609,7 @@ function changeRandomCount(delta) {
 }
 
 .song-card:hover {
-  transform: translateY(-8px) scale(1.03); /* 悬浮效果更明显 */
+  transform: translateY(-8px) scale(1.03);
   box-shadow: 3px 8px 30px rgb(161, 167, 197);
 }
 
@@ -593,19 +620,19 @@ function changeRandomCount(delta) {
   padding: 20px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end; /* 内容置底，更美观 */
+  justify-content: flex-end;
 }
 
 .favorite-btn {
   position: absolute;
-  top: 15px; /* 调整位置 */
+  top: 15px;
   right: 15px;
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
   width: 40px;
   height: 40px;
-  font-size: 20px; /* 调整图标大小 */
+  font-size: 20px;
   color: white;
   cursor: pointer;
   transition: all 0.3s;
@@ -651,8 +678,8 @@ function changeRandomCount(delta) {
 
 .song-meta {
   display: flex;
-  align-items: center; /* 确保操作按钮和等级徽章对齐 */
-  justify-content: space-between; /* 将等级和操作按钮分开 */
+  align-items: center;
+  justify-content: space-between;
 }
 
 .level-badge {
@@ -949,5 +976,20 @@ function changeRandomCount(delta) {
 .load-more-trigger {
   height: 50px;
   width: 100%;
+}
+
+.info-box {
+  background-color: #fffbe6;
+  border: 1px solid #ffe58f;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #8a6d3b;
+}
+.empty-state-small {
+  text-align: center;
+  padding: 20px;
+  color: #888;
 }
 </style>
