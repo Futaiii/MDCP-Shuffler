@@ -23,6 +23,8 @@ Invoke-WebRequest -Uri "https://github.com/Futaiii/MDCP-Shuffler/releases/downlo
 curl -L -o "%USERPROFILE%\Downloads\rhythm-game-picker-0.0.2-windows-amd64.exe" "https://github.com/Futaiii/MDCP-Shuffler/releases/download/v0.0.2/rhythm-game-picker-0.0.2-windows-amd64.exe"
 ```
 
+**Windows用户请以管理员身份运行**
+
 ## ✨ 主要功能
 
 - **歌曲管理**: 轻松添加、编辑和删除你的歌曲信息，包括歌名、曲包/作者、难度等级和自定义卡片颜色。
