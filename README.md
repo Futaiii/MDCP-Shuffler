@@ -6,21 +6,21 @@
 > **软件内置MDCP部分曲库**
 
 ## ⬇️ 下载
-一般而言，你可以从 [GitHub Release](https://github.com/Futaiii/MDCP-Shuffler/releases/download/v0.0.2/rhythm-game-picker-0.0.2-windows-amd64.exe) 下载最新适用于Windows的版本。
+一般而言，你可以从 [GitHub Release](https://github.com/Futaiii/MDCP-Shuffler/releases/download/v0.0.4/rhythm-game-picker-0.0.4-windows-amd64.exe) 下载最新适用于Windows的版本。
 
 ### **注意：**
 **由于Release是由GitHub Actions自动生成的，因此没有官方签名，可能会被浏览器或者杀毒软件拦截下载。**
 
 **此为正常现象，请手动放行或者暂时关闭杀毒软件。软件是开源的，你可以随意浏览源码或者询问AI，本人确保没有任何病毒或者木马代码。**
 
-如果无法下载，请复制命令到终端中执行，将保存到C盘`下载`目录下，软件名称为：`rhythm-game-picker-0.0.2-windows-amd64.exe`：
+如果无法下载，请复制命令到终端中执行，将保存到C盘`下载`目录下，软件名称为：`rhythm-game-picker-0.0.4-windows-amd64.exe`：
 > Powershell命令
 ```Powershell
-Invoke-WebRequest -Uri "https://github.com/Futaiii/MDCP-Shuffler/releases/download/v0.0.2/rhythm-game-picker-0.0.2-windows-amd64.exe" -OutFile (Join-Path -Path ([System.Environment]::GetFolderPath('Downloads')) -ChildPath "rhythm-game-picker-0.0.2-windows-amd64.exe")
+Invoke-WebRequest -Uri "https://github.com/Futaiii/MDCP-Shuffler/releases/download/v0.0.4/rhythm-game-picker-0.0.4-windows-amd64.exe" -OutFile (Join-Path -Path ([System.Environment]::GetFolderPath('Downloads')) -ChildPath "rhythm-game-picker-0.0.4-windows-amd64.exe")
 ```
 > cmd命令
 ```Cmd
-curl -L -o "%USERPROFILE%\Downloads\rhythm-game-picker-0.0.2-windows-amd64.exe" "https://github.com/Futaiii/MDCP-Shuffler/releases/download/v0.0.2/rhythm-game-picker-0.0.2-windows-amd64.exe"
+curl -L -o "%USERPROFILE%\Downloads\rhythm-game-picker-0.0.4-windows-amd64.exe" "https://github.com/Futaiii/MDCP-Shuffler/releases/download/v0.0.4/rhythm-game-picker-0.0.4-windows-amd64.exe"
 ```
 
 **Windows用户请以管理员身份运行**
