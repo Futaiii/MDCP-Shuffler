@@ -25,6 +25,7 @@ export namespace models {
 	    level: number;
 	    color: string;
 	    isFavorite: boolean;
+	    isBlacklisted: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Song(source);
@@ -38,6 +39,7 @@ export namespace models {
 	        this.level = source["level"];
 	        this.color = source["color"];
 	        this.isFavorite = source["isFavorite"];
+	        this.isBlacklisted = source["isBlacklisted"];
 	    }
 	}
 

@@ -59,6 +59,11 @@ func (a *App) ToggleFavorite(id int) error {
 	return a.db.ToggleFavorite(id)
 }
 
+// 新增：暴露给前端的 ToggleBlacklist 方法
+func (a *App) ToggleBlacklist(id int) error {
+	return a.db.ToggleBlacklist(id)
+}
+
 func (a *App) RandomPick(options models.RandomOptions) ([]models.Song, error) {
 	songs, err := a.db.GetAllSongs()
 	if err != nil {
@@ -67,6 +72,11 @@ func (a *App) RandomPick(options models.RandomOptions) ([]models.Song, error) {
 
 	var filtered []models.Song
 	for _, song := range songs {
+		// 修改：首先过滤掉黑名单中的歌曲
+		if song.IsBlacklisted {
+			continue
+		}
+
 		if options.OnlyFavorites && !song.IsFavorite {
 			continue
 		}

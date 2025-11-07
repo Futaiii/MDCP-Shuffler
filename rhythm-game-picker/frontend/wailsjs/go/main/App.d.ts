@@ -10,6 +10,8 @@ export function GetAllSongs():Promise<Array<models.Song>>;
 
 export function RandomPick(arg1:models.RandomOptions):Promise<Array<models.Song>>;
 
+export function ToggleBlacklist(arg1:number):Promise<void>;
+
 export function ToggleFavorite(arg1:number):Promise<void>;
 
 export function UpdateSong(arg1:models.Song):Promise<void>;

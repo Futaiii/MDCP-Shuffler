@@ -18,6 +18,10 @@ export function RandomPick(arg1) {
   return window['go']['main']['App']['RandomPick'](arg1);
 }
 
+export function ToggleBlacklist(arg1) {
+  return window['go']['main']['App']['ToggleBlacklist'](arg1);
+}
+
 export function ToggleFavorite(arg1) {
   return window['go']['main']['App']['ToggleFavorite'](arg1);
 }

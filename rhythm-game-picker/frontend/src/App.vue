@@ -60,6 +60,8 @@
               </div>
             </div>
             <div class="card-actions">
+              <!-- 功能1: 新增黑名单切换按钮 -->
+              <button @click="toggleBlacklist(song.id)" class="btn-icon blacklist-btn" :class="{ active: song.isBlacklisted }" title="加入黑名单 (随机时不出现)">🚫</button>
               <button @click="editSong(song)" class="btn-icon" title="编辑">✏️</button>
               <button @click="deleteSong(song)" class="btn-icon" title="删除">🗑️</button>
             </div>
@@ -105,6 +107,13 @@
                     @click="formData.color = color"
                 ></div>
               </div>
+            </div>
+            <!-- 功能1: 新增黑名单复选框 -->
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="formData.isBlacklisted">
+                加入黑名单 (随机时不出现)
+              </label>
             </div>
             <div class="form-actions">
               <button type="button" @click="closeAddModal" class="btn btn-secondary">取消</button>
@@ -179,7 +188,13 @@
           <div v-if="randomResults.length === 0" class="empty-state-small">
             <p>在指定的条件下没有找到可抽取的歌曲哦！</p>
           </div>
-          <button @click="showResultModal = false" class="btn btn-primary btn-full">关闭</button>
+          <!-- 功能2: 新增“再次抽取”按钮 -->
+          <div class="form-actions">
+            <button @click="showResultModal = false" class="btn btn-secondary">关闭</button>
+            <button @click="performRandomPick" class="btn btn-success">
+              再次抽取
+            </button>
+          </div>
         </div>
       </div>
     </transition>
@@ -202,7 +217,8 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
-import { GetAllSongs, AddSong, UpdateSong, DeleteSong as BackendDeleteSong, ToggleFavorite, RandomPick } from '../wailsjs/go/main/App'
+// 功能1: 假设后端增加了 ToggleBlacklist 方法
+import { GetAllSongs, AddSong, UpdateSong, DeleteSong as BackendDeleteSong, ToggleFavorite, ToggleBlacklist, RandomPick } from '../wailsjs/go/main/App'
 
 const searchTerm = ref('');
 const allSongs = ref([])
@@ -226,8 +242,9 @@ const macaronColors = [
   '#E0BBE4', '#FFB7D5', '#C7CEEA', '#B4E7F5', '#FED9B7',
   '#A0E7E5', '#F7C6C7', '#C9E4DE', '#FFD1DC', '#E4C1F9',
 ];
+// 功能1: formData 中增加 isBlacklisted 默认值
 const formData = ref({
-  title: '', artist: '', level: 1, color: macaronColors[0], isFavorite: false
+  title: '', artist: '', level: 1, color: macaronColors[0], isFavorite: false, isBlacklisted: false
 })
 const randomOptions = ref({
   count: 1, minLevel: 0, maxLevel: 0, onlyFavorites: false
@@ -267,7 +284,8 @@ async function performRandomPick() {
     // 如果有搜索词，则在前端从搜索结果中抽取
     if (searchTerm.value.trim() !== '') {
       // 1. 从当前搜索结果中筛选符合条件的歌曲
-      let potentialPicks = [...filteredSongs.value];
+      // 功能1: 核心改动 - 首先过滤掉黑名单中的歌曲
+      let potentialPicks = [...filteredSongs.value].filter(s => !s.isBlacklisted);
 
       if (randomOptions.value.onlyFavorites) {
         potentialPicks = potentialPicks.filter(s => s.isFavorite);
@@ -290,12 +308,15 @@ async function performRandomPick() {
 
     } else {
       // 如果没有搜索词，则调用后端进行全局抽取（原有逻辑）
+      // 假设后端的 RandomPick 方法已经内置了排除黑名单歌曲的逻辑
       randomResults.value = await RandomPick(randomOptions.value);
     }
 
-    // 显示结果
-    showRandomModal.value = false;
-    showResultModal.value = true;
+    // 功能2: 如果不是从结果页再次抽取，则需要打开模态框
+    if (!showResultModal.value) {
+      showRandomModal.value = false;
+      showResultModal.value = true;
+    }
 
   } catch (err) {
     console.error('抽取失败:', err);
@@ -356,10 +377,11 @@ async function loadSongs() {
 function openAddModal() { resetForm(); showAddModal.value = true; }
 function editSong(song) {
   editingItem.value = { ...song };
+  // 功能1: 编辑时载入 isBlacklisted 状态
   formData.value = {
     id: song.id, title: song.title, artist: song.artist,
     level: song.level || 1, color: song.color || macaronColors[0],
-    isFavorite: song.isFavorite,
+    isFavorite: song.isFavorite, isBlacklisted: song.isBlacklisted || false,
   };
   showAddModal.value = true;
 }
@@ -404,17 +426,37 @@ async function toggleFavorite(id) {
   } catch (err) { console.error('操作失败:', err); await loadSongs(); }
 }
 
+// 功能1: 新增切换黑名单状态的函数
+async function toggleBlacklist(id) {
+  try {
+    // 乐观更新 UI，立即反馈
+    const song = allSongs.value.find(s => s.id === id);
+    if (song) {
+      song.isBlacklisted = !song.isBlacklisted;
+    }
+    // 调用后端 API
+    await ToggleBlacklist(id);
+  } catch (err) {
+    console.error('黑名单操作失败:', err);
+    // 如果失败，重新加载数据以恢复到正确状态
+    await loadSongs();
+  }
+}
+
 function closeAddModal() {
   showAddModal.value = false;
   editingItem.value = null;
   resetForm();
 }
+
 function resetForm() {
+  // 功能1: 重置表单时包含 isBlacklisted
   formData.value = {
     title: '', artist: '', level: 1,
-    color: macaronColors[0], isFavorite: false
+    color: macaronColors[0], isFavorite: false, isBlacklisted: false
   };
 }
+
 function openRandomModal() {
   randomOptions.value.onlyFavorites = showFavoritesOnly.value;
   showRandomModal.value = true;
@@ -427,7 +469,6 @@ function changeRandomCount(delta) {
   }
 }
 </script>
-
 
 <style scoped>
 .app-container {
@@ -537,7 +578,7 @@ function changeRandomCount(delta) {
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.2);
+  background: linear-gradient(45deg, #4facfe 0%, #00f2fe 100%);
   color: white;
 }
 
@@ -992,4 +1033,35 @@ function changeRandomCount(delta) {
   padding: 20px;
   color: #888;
 }
+
+
+/* 为黑名单按钮添加激活样式 */
+.blacklist-btn.active {
+  opacity: 1;
+  background-color: rgba(255, 99, 132, 0.2);
+  border-radius: 50%;
+  transform: scale(1.1);
+}
+
+.blacklist-btn {
+  opacity: 0.5;
+  transition: all 0.2s ease;
+}
+
+/* 调整再次抽取按钮，使其更好看 */
+.result-modal .form-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.result-modal .form-actions button {
+  flex: 1;
+}
+
+.result-modal .form-actions .btn-success span {
+  margin-right: 8px;
+  display: inline-block;
+}
+
 </style>
