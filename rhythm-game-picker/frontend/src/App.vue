@@ -1,5 +1,6 @@
 <template>
-  <div class="app-container">
+  <!-- 绑定 dark-theme 类 -->
+  <div class="app-container" :class="{ 'dark-theme': isDarkMode, 'light-theme': !isDarkMode }">
     <!-- 顶部工具栏 -->
     <header class="header">
       <h1 class="title">
@@ -7,11 +8,15 @@
         RHYTHM GAME PICKER
       </h1>
       <div class="header-actions">
+        <!-- 主题切换按钮 -->
+        <button @click="toggleTheme" class="btn btn-secondary theme-toggle" :title="isDarkMode ? '切换浅色' : '切换深色'">
+          {{ isDarkMode ? '☀️' : '🌙' }}
+        </button>
         <button @click="openAddModal" class="btn btn-primary">
-          <span>➕</span> 添加歌曲
+          <span>➕</span> <span class="hide-mobile">添加歌曲</span>
         </button>
         <button @click="openRandomModal" class="btn btn-accent">
-          <span>🎲</span> 随机抽取
+          <span>🎲</span> <span class="hide-mobile">随机抽取</span>
         </button>
       </div>
     </header>
@@ -83,7 +88,7 @@
       <div ref="loadMoreTrigger" v-show="hasMoreSongs" class="load-more-trigger"></div>
 
       <div v-if="visibleSongs.length === 0 && !loading" class="empty-state">
-        <div class="empty-icon-box">🤷‍♂️</div>
+        <div class="empty-icon-box"></div>
         <p>NO SONGS FOUND.</p>
       </div>
     </main>
@@ -204,12 +209,12 @@
           </div>
 
           <div v-if="randomResults.length === 0" class="empty-state-small">
-            <p>NOTHING FOUND BRO.</p>
+            <p style="margin-bottom: 3em;">NOTHING FOUND.</p>
           </div>
 
           <div class="form-actions grid-2">
             <button @click="showResultModal = false" class="btn btn-secondary">CLOSE</button>
-            <button @click="performRandomPick" class="btn btn-accent">REROLL 🎲</button>
+            <button @click="performRandomPick" class="btn btn-accent">REROLL</button>
           </div>
         </div>
       </div>
@@ -228,6 +233,9 @@
         </div>
       </div>
     </transition>
+
+    <!-- 深色模式全局遮罩 -->
+     <div v-if="isDarkMode" class="dark-mode-overlay"></div>
   </div>
 </template>
 
@@ -236,13 +244,29 @@ import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 // 模拟后端方法，实际使用时请确保 Wails 绑定正确
 import { GetAllSongs, AddSong, UpdateSong, DeleteSong as BackendDeleteSong, ToggleFavorite, ToggleBlacklist, RandomPick } from '../wailsjs/go/main/App'
 
-// --- MOCK DATA FOR PREVIEW (因为我没有你的后端) ---
-// 如果在实际项目中运行，请删除下面的 Mock 函数并取消上面的 Import 注释
-//const GetAllSongs = async () => Array.from({ length: 10 }, (_, i) => ({ id: i, title: `Song ${i}`, artist: 'Composer', level: 10 + i%5, color: '#FFB3BA', isFavorite: false }));
-//const AddSong = async () => {}; const UpdateSong = async () => {}; const BackendDeleteSong = async () => {}; 
-////const ToggleFavorite = async () => {}; const ToggleBlacklist = async () => {}; const RandomPick = async () => [];
+// --- Mock Data (如需测试，请取消注释并注释掉上方的 Import) ---
+// const GetAllSongs = async () => Array.from({ length: 12 }, (_, i) => ({ id: i, title: `Dark Anthem ${i}`, artist: 'Void Composer', level: 10 + i%5, color: '#FFB3BA', isFavorite: false }));
+// const AddSong = async () => {}; const UpdateSong = async () => {}; const BackendDeleteSong = async () => {}; 
+// const ToggleFavorite = async () => {}; const ToggleBlacklist = async () => {}; const RandomPick = async () => [];
 // ---------------------------------------------
 
+// Dark Mode State
+const isDarkMode = ref(false);
+
+// 从本地存储读取主题偏好
+onMounted(() => {
+  const savedTheme = localStorage.getItem('theme');
+  if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    isDarkMode.value = true;
+  }
+});
+
+const toggleTheme = () => {
+  isDarkMode.value = !isDarkMode.value;
+  localStorage.setItem('theme', isDarkMode.value ? 'dark' : 'light');
+};
+
+// ... (原有逻辑保持不变) ...
 const searchTerm = ref('');
 const allSongs = ref([])
 const visibleSongs = ref([])
@@ -429,9 +453,7 @@ async function confirmDelete() {
   if (songToDeleteId.value === null) return;
   try {
     await BackendDeleteSong(songToDeleteId.value);
-    // Mock
     allSongs.value = allSongs.value.filter(s => s.id !== songToDeleteId.value);
-    
     await loadSongs();
   } catch (err) {
     console.error('删除失败:', err);
@@ -492,20 +514,64 @@ function changeRandomCount(delta) {
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700;900&display=swap');
 
-/* --- 全局变量定义 --- */
+/* --- 全局变量与主题定义 --- */
 :root {
-  --bg-color: #E6E6E6;
+  /* 浅色模式 (默认) */
+  --bg-color: #fdfbf7;
+  --dot-color: #000000;
   --text-color: #000000;
   --border-color: #000000;
+  --shadow-color: #000000;
+  --surface-color: #FFFFFF; /* 卡片/输入框背景 */
+  --input-bg: #FFFFFF;
+  --modal-overlay: rgba(0, 0, 0, 0.6);
+  --btn-text-color: #000000;
+  --card-text-color: #000000; /* 卡片内部始终保持黑色文本，因为卡片背景是浅色 */
+  
+  /* 尺寸 */
   --border-width: 3px;
   --shadow-offset: 4px;
-  --primary-color: #8B5CF6; /* Purple */
-  --secondary-color: #A7F3D0; /* Mint */
-  --accent-color: #F59E0B; /* Yellow/Orange */
-  --danger-color: #EF4444; /* Red */
-  --white: #FFFFFF;
+}
+
+.light-theme {
+  /* 浅色模式 (默认) */
+  --bg-color: #fdfbf7;
+  --dot-color: #000000;
+  --text-color: #000000;
+  --border-color: #000000;
+  --shadow-color: #000000;
+  --surface-color: #FFFFFF; /* 卡片/输入框背景 */
+  --input-bg: #FFFFFF;
+  --modal-overlay: rgba(0, 0, 0, 0.6);
+  --btn-text-color: #000000;
+  --card-text-color: #000000; /* 卡片内部始终保持黑色文本，因为卡片背景是浅色 */
+  
+  /* 尺寸 */
+  --border-width: 3px;
+  --shadow-offset: 4px;
+}
+
+/* 深色模式 (Neo Brutalism Dark) */
+.dark-theme {
+  --bg-color: #121212; /* 深炭色 */
+  --dot-color: #2a2a2a; /* 深灰点阵 */
+  --text-color: #EEEEEE; /* 灰白字 */
+  --border-color: #FFFFFF; /* 高反差白边框 */
+  --shadow-color: #444444; /* 灰色硬阴影 */
+  --surface-color: #1E1E1E; /* 深色组件背景 */
+  --input-bg: #2C2C2C;
+  --modal-overlay: rgba(255, 255, 255, 0.1); /* 浅色微遮罩 */
+  --btn-text-color: #000000; /* 按钮保持鲜艳，文字保持黑色 */
+}
+
+.dark-mode-overlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.2);
+  pointer-events: none;
+  z-index: 5;
 }
 
 * {
@@ -518,10 +584,11 @@ function changeRandomCount(delta) {
   display: flex;
   flex-direction: column;
   color: var(--text-color);
-  background-color: #fdfbf7; /* 纸张色 */
-  background-image: radial-gradient(#000000 1px, transparent 0);
-  background-size: 20px 20px; /* 点阵背景 */
+  background-color: var(--bg-color);
+  background-image: radial-gradient(var(--dot-color) 1px, transparent 0);
+  background-size: 20px 20px;
   font-family: 'Space Grotesk', 'Courier New', sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* --- 头部区域 --- */
@@ -530,9 +597,10 @@ function changeRandomCount(delta) {
   justify-content: space-between;
   align-items: center;
   padding: 20px 30px;
-  background: var(--white);
+  background: var(--surface-color);
   border-bottom: var(--border-width) solid var(--border-color);
   z-index: 10;
+  transition: background-color 0.3s, border-color 0.3s;
 }
 
 .title {
@@ -555,8 +623,9 @@ function changeRandomCount(delta) {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--border-color);
+  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow-color);
   font-size: 24px;
+  color: black; /* 图标内部保持黑色 */
 }
 
 .header-actions {
@@ -564,7 +633,13 @@ function changeRandomCount(delta) {
   gap: 15px;
 }
 
-/* --- Neo-Brutalism 按钮 --- */
+@media (max-width: 600px) {
+  .title { font-size: 20px; }
+  .hide-mobile { display: none; }
+  .header { padding: 15px; }
+}
+
+/* --- 按钮 --- */
 .btn {
   padding: 12px 24px;
   border: var(--border-width) solid var(--border-color);
@@ -576,38 +651,30 @@ function changeRandomCount(delta) {
   display: flex;
   align-items: center;
   gap: 8px;
-  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--border-color);
+  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow-color);
   text-transform: uppercase;
+  color: var(--btn-text-color);
 }
 
 .btn:hover {
   transform: translate(-2px, -2px);
-  box-shadow: calc(var(--shadow-offset) + 2px) calc(var(--shadow-offset) + 2px) 0 var(--border-color);
+  box-shadow: calc(var(--shadow-offset) + 2px) calc(var(--shadow-offset) + 2px) 0 var(--shadow-color);
 }
 
 .btn:active {
   transform: translate(2px, 2px);
-  box-shadow: 0 0 0 var(--border-color);
+  box-shadow: 0 0 0 var(--shadow-color);
 }
 
-.btn-primary {
-  background: #4ADE80; /* Green */
-  color: black;
-}
+.btn-primary { background: #4ADE80; } /* Green */
+.btn-accent { background: #FBBF24; } /* Yellow */
+.btn-secondary { background: #E5E7EB; } /* Grey */
+.btn-danger { background: #F87171; } /* Red */
 
-.btn-accent {
-  background: #FBBF24; /* Yellow */
-  color: black;
-}
-
-.btn-secondary {
-  background: #E5E7EB; /* Grey */
-  color: black;
-}
-
-.btn-danger {
-  background: #F87171; /* Red */
-  color: black;
+/* 深色模式下的二级按钮调整 */
+.dark-theme .btn-secondary {
+  background: #4B5563; 
+  color: white;
 }
 
 /* --- 筛选栏 --- */
@@ -619,12 +686,13 @@ function changeRandomCount(delta) {
   display: flex;
   gap: 20px;
   padding: 20px;
-  background: var(--white);
+  background: var(--surface-color);
   border: var(--border-width) solid var(--border-color);
-  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--border-color);
+  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow-color);
   flex-wrap: wrap;
   align-items: center;
   border-radius: 4px;
+  transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
 }
 
 .filter-group {
@@ -650,13 +718,14 @@ function changeRandomCount(delta) {
     top: 50%;
     transform: translateY(-50%);
     z-index: 1;
+    filter: grayscale(100%); /* 让图标适应主题 */
 }
 
 .neo-input, .neo-select {
   padding: 10px 15px 10px 15px;
   border: var(--border-width) solid var(--border-color);
-  border-radius: 0; /* 硬角 */
-  background: var(--white);
+  border-radius: 0;
+  background: var(--input-bg);
   color: var(--text-color);
   font-family: inherit;
   font-weight: 700;
@@ -670,8 +739,9 @@ function changeRandomCount(delta) {
 }
 
 .neo-input:focus, .neo-select:focus {
-  background: #FEF9C3;
-  box-shadow: 4px 4px 0 rgba(0,0,0,1);
+  background: #FEF9C3; /* Focus always yellow for contrast */
+  color: black;
+  box-shadow: 4px 4px 0 var(--shadow-color);
 }
 
 /* --- 复选框 --- */
@@ -692,13 +762,13 @@ function changeRandomCount(delta) {
 .checkmark {
   height: 20px;
   width: 20px;
-  background-color: #fff;
+  background-color: var(--input-bg);
   border: var(--border-width) solid var(--border-color);
   position: relative;
 }
 
 .neo-checkbox input:checked ~ .checkmark {
-  background-color: #000;
+  background-color: var(--text-color);
 }
 
 .neo-checkbox input:checked ~ .checkmark:after {
@@ -708,7 +778,7 @@ function changeRandomCount(delta) {
   top: 1px;
   width: 5px;
   height: 10px;
-  border: solid white;
+  border: solid var(--bg-color); /* Checkmark color inverse of text */
   border-width: 0 3px 3px 0;
   transform: rotate(45deg);
 }
@@ -734,15 +804,16 @@ function changeRandomCount(delta) {
   overflow: hidden;
   cursor: default;
   transition: all 0.2s;
-  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--border-color);
+  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow-color);
   display: flex;
   flex-direction: column;
   min-height: 200px;
+  color: var(--card-text-color); /* 强制卡片内文本为黑色 */
 }
 
 .song-card:hover {
   transform: translate(-3px, -3px);
-  box-shadow: 8px 8px 0 var(--border-color);
+  box-shadow: 8px 8px 0 var(--shadow-color);
 }
 
 .card-header {
@@ -763,15 +834,23 @@ function changeRandomCount(delta) {
 
 .card-footer {
     padding: 10px 15px;
-    background: rgba(255,255,255,0.4); /* 半透明白底 */
-    border-top: var(--border-width) solid var(--border-color);
+    background: rgba(255,255,255,0.4);
+    border-top: var(--border-width) solid rgba(0,0,0,0.1); /* 内部边框保持微妙 */
+}
+
+/* 在深色模式下，卡片的边框需要与背景对比，但卡片内部颜色是亮色 */
+.dark-theme .song-card {
+    border-color: #FFFFFF; /* 白边框 */
+}
+.dark-theme .card-footer {
+     border-top-color: rgba(0,0,0,0.1);
 }
 
 .song-title {
   font-size: 20px;
   font-weight: 900;
   margin: 0 0 5px 0;
-  color: black;
+  color: black; /* Always black inside card */
   line-height: 1.1;
   word-break: break-word;
 }
@@ -802,15 +881,8 @@ function changeRandomCount(delta) {
   line-height: 1;
   transition: transform 0.2s;
 }
-
-.favorite-btn:hover {
-    transform: scale(1.2);
-}
-
-.favorite-btn.active {
-  color: #000;
-  text-shadow: 2px 2px 0 #fff;
-}
+.favorite-btn:hover { transform: scale(1.2); }
+.favorite-btn.active { color: #000; text-shadow: 2px 2px 0 #fff; }
 
 /* --- 动作按钮 --- */
 .action-buttons {
@@ -831,27 +903,18 @@ function changeRandomCount(delta) {
     cursor: pointer;
     transition: all 0.1s;
     box-shadow: 2px 2px 0 black;
+    color: black;
 }
 
-.neo-icon-btn:hover {
-    transform: translate(-1px, -1px);
-    box-shadow: 3px 3px 0 black;
-}
-
-.neo-icon-btn:active {
-    transform: translate(1px, 1px);
-    box-shadow: 1px 1px 0 black;
-}
-
-.neo-icon-btn.danger.active {
-    background: #F87171;
-}
+.neo-icon-btn:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 black; }
+.neo-icon-btn:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 black; }
+.neo-icon-btn.danger.active { background: #F87171; }
 
 /* --- 空状态 --- */
 .empty-state {
   text-align: center;
   padding: 60px 20px;
-  color: black;
+  color: var(--text-color);
   font-weight: bold;
   font-size: 20px;
 }
@@ -860,22 +923,22 @@ function changeRandomCount(delta) {
     font-size: 60px;
     width: 120px;
     height: 120px;
-    background: #fff;
-    border: var(--border-width) solid black;
+    background: var(--surface-color);
+    border: var(--border-width) solid var(--border-color);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     margin: 0 auto 20px;
-    box-shadow: 6px 6px 0 black;
+    box-shadow: 6px 6px 0 var(--shadow-color);
 }
 
 /* --- 模态框 --- */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6); /* 加深的遮罩 */
-  backdrop-filter: grayscale(100%) contrast(120%); /* 粗糙的滤镜效果 */
+  background: var(--modal-overlay);
+  backdrop-filter: grayscale(100%) contrast(120%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -883,23 +946,30 @@ function changeRandomCount(delta) {
 }
 
 .neo-box {
-  background: white;
-  border: var(--border-width) solid black;
-  box-shadow: 10px 10px 0 black;
+  background: var(--surface-color);
+  border: var(--border-width) solid var(--border-color);
+  box-shadow: 10px 10px 0 var(--shadow-color);
   padding: 0;
   max-width: 500px;
   width: 90%;
   max-height: 90vh;
   overflow-y: auto;
+  color: var(--text-color);
 }
 
 .modal-header {
     padding: 20px;
-    border-bottom: var(--border-width) solid black;
-    background: #C4B5FD; /* Light Purple header */
+    border-bottom: var(--border-width) solid var(--border-color);
+    background: #C4B5FD; /* Light Purple header default */
     display: flex;
     justify-content: space-between;
     align-items: center;
+    color: black; /* Header text always black */
+}
+
+.dark-theme .modal-header {
+    background: #6D28D9; /* Darker purple for dark mode */
+    color: white;
 }
 
 .modal-header h2 {
@@ -916,6 +986,7 @@ function changeRandomCount(delta) {
     cursor: pointer;
     font-weight: bold;
     box-shadow: 2px 2px 0 black;
+    color: black;
 }
 .close-btn:active { transform: translate(1px, 1px); box-shadow: none; }
 
@@ -951,49 +1022,44 @@ function changeRandomCount(delta) {
 .color-swatch {
   width: 30px;
   height: 30px;
-  border: 2px solid black; /* 必须要有黑边 */
+  border: 2px solid var(--border-color);
   cursor: pointer;
   transition: transform 0.2s;
 }
-.color-swatch:hover {
-  transform: scale(1.1);
-}
-.color-swatch.selected {
-  position: relative;
-}
+.color-swatch:hover { transform: scale(1.1); }
+.color-swatch.selected { position: relative; border-color: var(--text-color); }
 .color-swatch.selected::after {
     content: '✔';
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     font-size: 12px;
+    color: black;
 }
 
 /* --- Stepper & Range --- */
-.stepper-input {
-    display: flex;
-}
+.stepper-input { display: flex; }
 .stepper-btn {
     width: 40px;
     background: #eee;
-    border: var(--border-width) solid black;
+    border: var(--border-width) solid var(--border-color);
     font-weight: bold;
     font-size: 18px;
     cursor: pointer;
+    color: black;
 }
+.dark-theme .stepper-btn { background: #444; color: white; }
 .stepper-btn:first-child { border-right: none; }
 .stepper-btn:last-child { border-left: none; }
 .no-border-radius { border-radius: 0; text-align: center; width: 60px; }
 
-.range-group {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
+.range-group { display: flex; align-items: center; gap: 10px; }
 .divider { font-weight: bold; }
 
 /* --- 结果页面 --- */
-.center-header { justify-content: center; background: #6EE7B7; }
+.center-header { justify-content: center; background: #6EE7B7; color: black; }
+.dark-theme .center-header { background: #059669; color: white; }
+
 .result-grid {
     padding: 20px;
     display: grid;
@@ -1002,12 +1068,14 @@ function changeRandomCount(delta) {
 }
 
 .result-card {
-    border: var(--border-width) solid black;
+    border: var(--border-width) solid var(--border-color); /* 结果卡片使用主题边框 */
     padding: 20px;
     text-align: center;
     position: relative;
-    box-shadow: 5px 5px 0 black;
+    box-shadow: 5px 5px 0 var(--shadow-color);
+    color: black; /* 内容始终为黑，因为背景色是 macaronColors */
 }
+.dark-theme .result-card { border-color: #fff; }
 
 .result-number {
     background: black;
@@ -1032,57 +1100,37 @@ function changeRandomCount(delta) {
     font-weight: bold;
     font-size: 12px;
     margin-top: 10px;
+    color: black;
 }
 
-.grid-2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-}
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 .info-tag {
     background: #FEF3C7;
-    border-bottom: 2px solid black;
+    border-bottom: 2px solid var(--border-color);
     padding: 10px;
     text-align: center;
     font-size: 14px;
+    color: black;
 }
 
-.warning-box .modal-header {
-    background: #FCA5A5;
-}
-.warning-box {
-    text-align: center;
-}
+.warning-box .modal-header { background: #FCA5A5; color: black; }
+.dark-theme .warning-box .modal-header { background: #B91C1C; color: white; }
+.warning-box { text-align: center; }
 
 /* --- 动画 --- */
-.neo-modal-enter-active, .neo-modal-leave-active {
-  transition: opacity 0.2s;
-}
-.neo-modal-enter-from, .neo-modal-leave-to {
-  opacity: 0;
-}
-.neo-modal-enter-active .modal-content {
-    animation: modal-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-.neo-modal-leave-active .modal-content {
-    animation: modal-pop 0.2s reverse;
-}
+.neo-modal-enter-active, .neo-modal-leave-active { transition: opacity 0.2s; }
+.neo-modal-enter-from, .neo-modal-leave-to { opacity: 0; }
+.neo-modal-enter-active .modal-content { animation: modal-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+.neo-modal-leave-active .modal-content { animation: modal-pop 0.2s reverse; }
 
 @keyframes modal-pop {
     0% { transform: scale(0.8); opacity: 0; }
     100% { transform: scale(1); opacity: 1; }
 }
 
-.list-anim-enter-active,
-.list-anim-leave-active {
-  transition: all 0.3s ease;
-}
-.list-anim-enter-from,
-.list-anim-leave-to {
-  opacity: 0;
-  transform: translateY(30px);
-}
+.list-anim-enter-active, .list-anim-leave-active { transition: all 0.3s ease; }
+.list-anim-enter-from, .list-anim-leave-to { opacity: 0; transform: translateY(30px); }
 
 .load-more-trigger { height: 20px; }
 </style>
